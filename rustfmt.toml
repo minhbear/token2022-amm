@@ -1,0 +1,5 @@
+edition = "2021"
+imports_granularity = "One"
+group_imports = "One"
+hard_tabs = false
+tab_spaces = 2

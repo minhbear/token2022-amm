@@ -1,0 +1,5 @@
+echo "format rust code...."
+cargo +nightly fmt
+
+echo "Add all changes"
+git add .
