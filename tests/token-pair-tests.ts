@@ -603,7 +603,43 @@ describe('Token Pair Tests - All Combinations', () => {
     );
   });
 
-  // Test 3: Token-2022 + Token-2022
+  // Test 3: Legacy + Token-2022
+  describe('🔄 LEGACY + TOKEN-2022 PAIR', () => {
+    let tokenX: TokenInfo;
+    let tokenY: TokenInfo;
+    let userAccounts: Map<string, UserTokenAccounts>;
+
+    before(async () => {
+      const setup = await setupTestTokens(
+        provider.connection,
+        authority,
+        [user1.publicKey, user2.publicKey],
+        'legacy',
+        'token2022'
+      );
+
+      tokenX = setup.tokenX;
+      tokenY = setup.tokenY;
+      userAccounts = setup.userAccounts;
+
+      await fundUsers(
+        provider.connection,
+        authority,
+        tokenX,
+        tokenY,
+        userAccounts
+      );
+    });
+
+    testTokenPair(
+      'Token-2022 + Legacy',
+      () => tokenX,
+      () => tokenY,
+      () => userAccounts
+    );
+  });
+
+  // Test 4: Token-2022 + Token-2022
   describe('🔄 TOKEN-2022 + TOKEN-2022 PAIR', () => {
     let tokenX: TokenInfo;
     let tokenY: TokenInfo;
