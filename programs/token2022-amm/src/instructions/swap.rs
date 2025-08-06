@@ -128,9 +128,24 @@ pub fn handler(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Resul
     AMMError::InsufficientLiquidity
   );
 
-  // Calculate output amount using constant product formula with fee
+  // Calculate output amount using constant product formula with AMM fee
   // amount_out = (amount_in * (10000 - fee) * reserve_out) / ((reserve_in * 10000) + (amount_in * (10000 - fee)))
-  let fee_adjusted_amount_in = (amount_in as u128)
+
+  // Account for transfer fees on input token
+  let actual_amount_in = if let Some(epoch_transfer_fee) =
+    crate::utils::token::get_epoch_transfer_fee(&ctx.accounts.mint_in)?
+  {
+    let transfer_fee = epoch_transfer_fee
+      .calculate_fee(amount_in)
+      .ok_or(AMMError::TransferFeeCalculationError)?;
+    amount_in
+      .checked_sub(transfer_fee)
+      .ok_or(AMMError::InvalidAmount)?
+  } else {
+    amount_in
+  };
+
+  let fee_adjusted_amount_in = (actual_amount_in as u128)
     .checked_mul(
       (10000u128)
         .checked_sub(config.fee as u128)
@@ -149,9 +164,23 @@ pub fn handler(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Resul
     .ok_or(AMMError::InvalidAmount)?;
 
   require!(denominator > 0, AMMError::InvalidAmount);
-  let amount_out = numerator
+  let amount_out_before_fees = numerator
     .checked_div(denominator)
     .ok_or(AMMError::InvalidAmount)? as u64;
+
+  // Account for transfer fees on output token
+  let amount_out = if let Some(epoch_transfer_fee) =
+    crate::utils::token::get_epoch_transfer_fee(&ctx.accounts.mint_out)?
+  {
+    let transfer_fee = epoch_transfer_fee
+      .calculate_fee(amount_out_before_fees)
+      .ok_or(AMMError::TransferFeeCalculationError)?;
+    amount_out_before_fees
+      .checked_sub(transfer_fee)
+      .ok_or(AMMError::InvalidAmount)?
+  } else {
+    amount_out_before_fees
+  };
 
   require!(amount_out >= min_amount_out, AMMError::SlippageExceeded);
   require!(amount_out > 0, AMMError::InsufficientOutputAmount);
@@ -199,24 +228,24 @@ pub fn handler(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Resul
   );
   transfer_checked(transfer_out_ctx, amount_out, ctx.accounts.mint_out.decimals)?;
 
-  // Update pool reserves
+  // Update pool reserves - use actual amounts after fees
   if is_x_to_y {
     pool_state.reserve_x = pool_state
       .reserve_x
-      .checked_add(amount_in)
+      .checked_add(actual_amount_in)
       .ok_or(AMMError::InvalidAmount)?;
     pool_state.reserve_y = pool_state
       .reserve_y
-      .checked_sub(amount_out)
+      .checked_sub(amount_out_before_fees)
       .ok_or(AMMError::InvalidAmount)?;
   } else {
     pool_state.reserve_y = pool_state
       .reserve_y
-      .checked_add(amount_in)
+      .checked_add(actual_amount_in)
       .ok_or(AMMError::InvalidAmount)?;
     pool_state.reserve_x = pool_state
       .reserve_x
-      .checked_sub(amount_out)
+      .checked_sub(amount_out_before_fees)
       .ok_or(AMMError::InvalidAmount)?;
   }
 

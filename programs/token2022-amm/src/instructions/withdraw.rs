@@ -121,9 +121,36 @@ pub fn handler(
     .checked_div(pool_state.lp_supply as u128)
     .ok_or(AMMError::InvalidAmount)? as u64;
 
-  // Check slippage
-  require!(amount_x >= min_amount_x, AMMError::SlippageExceeded);
-  require!(amount_y >= min_amount_y, AMMError::SlippageExceeded);
+  // Calculate actual amounts user will receive after transfer fees
+  let actual_amount_x = if let Some(epoch_transfer_fee) =
+    crate::utils::token::get_epoch_transfer_fee(&ctx.accounts.mint_x)?
+  {
+    let transfer_fee = epoch_transfer_fee
+      .calculate_fee(amount_x)
+      .ok_or(AMMError::TransferFeeCalculationError)?;
+    amount_x
+      .checked_sub(transfer_fee)
+      .ok_or(AMMError::InvalidAmount)?
+  } else {
+    amount_x
+  };
+
+  let actual_amount_y = if let Some(epoch_transfer_fee) =
+    crate::utils::token::get_epoch_transfer_fee(&ctx.accounts.mint_y)?
+  {
+    let transfer_fee = epoch_transfer_fee
+      .calculate_fee(amount_y)
+      .ok_or(AMMError::TransferFeeCalculationError)?;
+    amount_y
+      .checked_sub(transfer_fee)
+      .ok_or(AMMError::InvalidAmount)?
+  } else {
+    amount_y
+  };
+
+  // Check slippage against actual amounts received
+  require!(actual_amount_x >= min_amount_x, AMMError::SlippageExceeded);
+  require!(actual_amount_y >= min_amount_y, AMMError::SlippageExceeded);
 
   // Burn LP tokens from user
   let burn_ctx = CpiContext::new(
@@ -180,9 +207,11 @@ pub fn handler(
     .ok_or(AMMError::InvalidAmount)?;
 
   msg!(
-    "Withdrew {} token X, {} token Y, burned {} LP tokens",
+    "Withdrew {} token X (received: {}), {} token Y (received: {}), burned {} LP tokens",
     amount_x,
+    actual_amount_x,
     amount_y,
+    actual_amount_y,
     lp_amount
   );
 

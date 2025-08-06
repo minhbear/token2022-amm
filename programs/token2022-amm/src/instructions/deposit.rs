@@ -110,11 +110,41 @@ pub fn handler(ctx: Context<Deposit>, amount_x: u64, amount_y: u64, min_lp_out: 
     require!(whitelist.contains(&user_key), AMMError::NotWhitelisted);
   }
 
+  // Calculate actual amounts after transfer fees
+  let actual_amount_x = if let Some(epoch_transfer_fee) =
+    crate::utils::token::get_epoch_transfer_fee(&ctx.accounts.mint_x)?
+  {
+    let transfer_fee = epoch_transfer_fee
+      .calculate_fee(amount_x)
+      .ok_or(AMMError::TransferFeeCalculationError)?;
+    amount_x
+      .checked_sub(transfer_fee)
+      .ok_or(AMMError::InvalidAmount)?
+  } else {
+    amount_x
+  };
+
+  let actual_amount_y = if let Some(epoch_transfer_fee) =
+    crate::utils::token::get_epoch_transfer_fee(&ctx.accounts.mint_y)?
+  {
+    let transfer_fee = epoch_transfer_fee
+      .calculate_fee(amount_y)
+      .ok_or(AMMError::TransferFeeCalculationError)?;
+    amount_y
+      .checked_sub(transfer_fee)
+      .ok_or(AMMError::InvalidAmount)?
+  } else {
+    amount_y
+  };
+
   let lp_tokens_to_mint = if pool_state.lp_supply == 0 {
-    // Initial deposit - use geometric mean
-    require!(amount_x > 0 && amount_y > 0, AMMError::InvalidAmount);
-    let initial_lp = (amount_x as u128)
-      .checked_mul(amount_y as u128)
+    // Initial deposit - use geometric mean of actual amounts
+    require!(
+      actual_amount_x > 0 && actual_amount_y > 0,
+      AMMError::InvalidAmount
+    );
+    let initial_lp = (actual_amount_x as u128)
+      .checked_mul(actual_amount_y as u128)
       .ok_or(AMMError::InvalidAmount)?
       .integer_sqrt() as u64;
 
@@ -122,19 +152,19 @@ pub fn handler(ctx: Context<Deposit>, amount_x: u64, amount_y: u64, min_lp_out: 
     require!(initial_lp > 0, AMMError::InvalidAmount);
     initial_lp
   } else {
-    // Proportional deposit
+    // Proportional deposit based on actual amounts
     require!(
       pool_state.reserve_x > 0 && pool_state.reserve_y > 0,
       AMMError::InsufficientLiquidity
     );
 
-    let lp_from_x = (amount_x as u128)
+    let lp_from_x = (actual_amount_x as u128)
       .checked_mul(pool_state.lp_supply as u128)
       .ok_or(AMMError::InvalidAmount)?
       .checked_div(pool_state.reserve_x as u128)
       .ok_or(AMMError::InvalidAmount)? as u64;
 
-    let lp_from_y = (amount_y as u128)
+    let lp_from_y = (actual_amount_y as u128)
       .checked_mul(pool_state.lp_supply as u128)
       .ok_or(AMMError::InvalidAmount)?
       .checked_div(pool_state.reserve_y as u128)
@@ -185,14 +215,14 @@ pub fn handler(ctx: Context<Deposit>, amount_x: u64, amount_y: u64, min_lp_out: 
   );
   mint_to(mint_ctx, lp_tokens_to_mint)?;
 
-  // Update pool state
+  // Update pool state with actual amounts after fees
   pool_state.reserve_x = pool_state
     .reserve_x
-    .checked_add(amount_x)
+    .checked_add(actual_amount_x)
     .ok_or(AMMError::InvalidAmount)?;
   pool_state.reserve_y = pool_state
     .reserve_y
-    .checked_add(amount_y)
+    .checked_add(actual_amount_y)
     .ok_or(AMMError::InvalidAmount)?;
   pool_state.lp_supply = pool_state
     .lp_supply

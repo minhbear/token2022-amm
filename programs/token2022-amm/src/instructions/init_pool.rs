@@ -94,14 +94,48 @@ pub fn handler(
   require!(fee <= 1000, AMMError::InvalidAmount);
 
   // Verify both tokens are supported (legacy SPL or Token-2022 with allowed extensions)
-  verify_supported_token_mint(&ctx.accounts.mint_x)?;
-  verify_supported_token_mint(&ctx.accounts.mint_y)?;
+  let mint_x_supported = verify_supported_token_mint(&ctx.accounts.mint_x)?;
+  let mint_y_supported = verify_supported_token_mint(&ctx.accounts.mint_y)?;
+
+  require!(
+    mint_x_supported && mint_y_supported,
+    AMMError::NotAllowedTokenExtension
+  );
 
   // Ensure mint_x and mint_y are different
   require!(
     ctx.accounts.mint_x.key() != ctx.accounts.mint_y.key(),
     AMMError::InvalidMint
   );
+
+  // Additional security: check for consistent token programs
+  let mint_x_info = ctx.accounts.mint_x.to_account_info();
+  let mint_y_info = ctx.accounts.mint_y.to_account_info();
+
+  // Verify token programs match the mint owners
+  if *mint_x_info.owner == anchor_spl::token::Token::id() {
+    require!(
+      ctx.accounts.token_program_x.key() == anchor_spl::token::Token::id(),
+      AMMError::InvalidMint
+    );
+  } else {
+    require!(
+      ctx.accounts.token_program_x.key() == anchor_spl::token_2022::Token2022::id(),
+      AMMError::InvalidMint
+    );
+  }
+
+  if *mint_y_info.owner == anchor_spl::token::Token::id() {
+    require!(
+      ctx.accounts.token_program_y.key() == anchor_spl::token::Token::id(),
+      AMMError::InvalidMint
+    );
+  } else {
+    require!(
+      ctx.accounts.token_program_y.key() == anchor_spl::token_2022::Token2022::id(),
+      AMMError::InvalidMint
+    );
+  }
 
   // Initialize config
   config.seed = seed;

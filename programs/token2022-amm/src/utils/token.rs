@@ -69,7 +69,11 @@ pub fn verify_supported_token_mint(token_mint: &InterfaceAccount<'_, Mint>) -> R
         return Err(AMMError::NotAllowedTokenExtension.into());
       }
       // other unsupported extensions
-      ExtensionType::MintCloseAuthority | ExtensionType::DefaultAccountState | _ => {
+      ExtensionType::MintCloseAuthority | ExtensionType::DefaultAccountState => {
+        return Err(AMMError::NotAllowedTokenExtension.into());
+      }
+      // Catch-all for unknown/future extensions - be conservative
+      _ => {
         return Err(AMMError::NotAllowedTokenExtension.into());
       }
     }
