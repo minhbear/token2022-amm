@@ -1,6 +1,6 @@
 # Token2022 AMM Template
 
-A complete AMM (Automated Market Maker) template for Solana with liquidity pools, token swapping, and full Token2022 compatibility.
+AMM (Automated Market Maker) template for Solana with liquidity pools, token swapping, and full Token2022 compatibility.
 
 ## Features
 
