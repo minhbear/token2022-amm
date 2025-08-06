@@ -73,7 +73,7 @@ export async function createToken2022WithTransferFee(
   transferFeeConfigAuthority: PublicKey,
   withdrawWithheldAuthority: PublicKey,
   transferFeeBasisPoints: number = 100, // 1%
-  maxTransferFee: bigint = BigInt(100 * 10**6), // 100 tokens
+  maxTransferFee: bigint = BigInt(100 * 10 ** 6), // 100 tokens
   decimals: number = 6
 ): Promise<TokenInfo> {
   const mintKeypair = Keypair.generate();
@@ -120,7 +120,10 @@ export async function createToken2022WithTransferFee(
     initializeMintInstruction
   );
 
-  await sendAndConfirmTransaction(connection, transaction, [payer, mintKeypair]);
+  await sendAndConfirmTransaction(connection, transaction, [
+    payer,
+    mintKeypair,
+  ]);
 
   return {
     mint,
@@ -184,13 +187,31 @@ export async function createUserTokenAccounts(
   lpTokenProgram?: PublicKey
 ): Promise<UserTokenAccounts> {
   const [tokenXAccount, tokenYAccount] = await Promise.all([
-    createUserTokenAccount(connection, payer, tokenX.mint, user, tokenX.tokenProgram),
-    createUserTokenAccount(connection, payer, tokenY.mint, user, tokenY.tokenProgram),
+    createUserTokenAccount(
+      connection,
+      payer,
+      tokenX.mint,
+      user,
+      tokenX.tokenProgram
+    ),
+    createUserTokenAccount(
+      connection,
+      payer,
+      tokenY.mint,
+      user,
+      tokenY.tokenProgram
+    ),
   ]);
 
   let lpTokenAccount: PublicKey | undefined;
   if (lpMint && lpTokenProgram) {
-    lpTokenAccount = await createUserTokenAccount(connection, payer, lpMint, user, lpTokenProgram);
+    lpTokenAccount = await createUserTokenAccount(
+      connection,
+      payer,
+      lpMint,
+      user,
+      lpTokenProgram
+    );
   }
 
   return {
@@ -241,25 +262,27 @@ export async function setupTestTokens(
   console.log(`\n🔧 Setting up tokens: ${tokenXType} + ${tokenYType}`);
 
   // Create tokens based on type
-  const tokenX = tokenXType === 'legacy' 
-    ? await createLegacyToken(connection, authority, authority.publicKey)
-    : await createToken2022WithTransferFee(
-        connection, 
-        authority, 
-        authority.publicKey,
-        authority.publicKey,
-        authority.publicKey
-      );
+  const tokenX =
+    tokenXType === 'legacy'
+      ? await createLegacyToken(connection, authority, authority.publicKey)
+      : await createToken2022WithTransferFee(
+          connection,
+          authority,
+          authority.publicKey,
+          authority.publicKey,
+          authority.publicKey
+        );
 
-  const tokenY = tokenYType === 'legacy'
-    ? await createLegacyToken(connection, authority, authority.publicKey)
-    : await createToken2022WithTransferFee(
-        connection,
-        authority,
-        authority.publicKey,
-        authority.publicKey,
-        authority.publicKey
-      );
+  const tokenY =
+    tokenYType === 'legacy'
+      ? await createLegacyToken(connection, authority, authority.publicKey)
+      : await createToken2022WithTransferFee(
+          connection,
+          authority,
+          authority.publicKey,
+          authority.publicKey,
+          authority.publicKey
+        );
 
   console.log(`✅ Token X (${tokenXType}): ${tokenX.mint.toString()}`);
   console.log(`✅ Token Y (${tokenYType}): ${tokenY.mint.toString()}`);
@@ -295,17 +318,35 @@ export async function fundUsers(
   tokenX: TokenInfo,
   tokenY: TokenInfo,
   userAccounts: Map<string, UserTokenAccounts>,
-  amountX: number = 10000 * 10**6, // 10,000 tokens
-  amountY: number = 10000 * 10**6  // 10,000 tokens
+  amountX: number = 10000 * 10 ** 6, // 10,000 tokens
+  amountY: number = 10000 * 10 ** 6 // 10,000 tokens
 ): Promise<void> {
   console.log('\n💰 Funding users with tokens...');
 
   for (const [userKey, accounts] of userAccounts) {
     await Promise.all([
-      mintTokensToUser(connection, authority, tokenX, accounts.tokenX, authority, amountX),
-      mintTokensToUser(connection, authority, tokenY, accounts.tokenY, authority, amountY),
+      mintTokensToUser(
+        connection,
+        authority,
+        tokenX,
+        accounts.tokenX,
+        authority,
+        amountX
+      ),
+      mintTokensToUser(
+        connection,
+        authority,
+        tokenY,
+        accounts.tokenY,
+        authority,
+        amountY
+      ),
     ]);
   }
 
-  console.log(`✅ Funded ${userAccounts.size} users with ${amountX / 10**6} X tokens and ${amountY / 10**6} Y tokens each`);
+  console.log(
+    `✅ Funded ${userAccounts.size} users with ${
+      amountX / 10 ** 6
+    } X tokens and ${amountY / 10 ** 6} Y tokens each`
+  );
 }

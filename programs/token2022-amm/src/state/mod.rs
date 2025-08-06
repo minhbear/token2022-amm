@@ -9,7 +9,7 @@ pub struct Config {
   pub fee: u16,
   pub locked: bool,
 
-  pub white_list_lp: Option<[Pubkey; 50]>,
+  pub white_list_lp: Option<[Pubkey; 10]>,
 
   pub auth_bump: u8,
   pub config_bump: u8,
@@ -24,7 +24,7 @@ impl Config {
         32 + // mint_y
         2 + // fee
         1 + // locked
-        1 + (50 * 32) + // white_list_lp (Option<[Pubkey; 50]>)
+        1 + (10 * 32) + // white_list_lp (Option<[Pubkey; 10]>)
         1 + // auth_bump
         1 + // config_bump
         1; // lp_bump

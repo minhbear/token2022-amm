@@ -23,14 +23,14 @@ pub struct Deposit<'info> {
         bump = config.config_bump,
         constraint = !config.locked @ AMMError::PoolLocked
     )]
-  pub config: Account<'info, Config>,
+  pub config: Box<Account<'info, Config>>,
 
   #[account(
         mut,
         seeds = [b"pool", config.key().as_ref()],
         bump
     )]
-  pub pool_state: Account<'info, PoolState>,
+  pub pool_state: Box<Account<'info, PoolState>>,
 
   /// CHECK: PDA authority for the pool
   #[account(
@@ -39,8 +39,8 @@ pub struct Deposit<'info> {
     )]
   pub pool_authority: UncheckedAccount<'info>,
 
-  pub mint_x: InterfaceAccount<'info, MintInterface>,
-  pub mint_y: InterfaceAccount<'info, MintInterface>,
+  pub mint_x: Box<InterfaceAccount<'info, MintInterface>>,
+  pub mint_y: Box<InterfaceAccount<'info, MintInterface>>,
 
   #[account(
         mut,
@@ -48,7 +48,7 @@ pub struct Deposit<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program_x,
     )]
-  pub vault_x: InterfaceAccount<'info, TokenAccount>,
+  pub vault_x: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
         mut,
@@ -56,7 +56,7 @@ pub struct Deposit<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program_y,
     )]
-  pub vault_y: InterfaceAccount<'info, TokenAccount>,
+  pub vault_y: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
         mut,
@@ -64,7 +64,7 @@ pub struct Deposit<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program_x,
     )]
-  pub user_token_x: InterfaceAccount<'info, TokenAccount>,
+  pub user_token_x: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
         mut,
@@ -72,14 +72,14 @@ pub struct Deposit<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program_y,
     )]
-  pub user_token_y: InterfaceAccount<'info, TokenAccount>,
+  pub user_token_y: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
         mut,
         seeds = [b"lp_mint", config.key().as_ref()],
         bump = config.lp_bump
     )]
-  pub lp_mint: InterfaceAccount<'info, MintInterface>,
+  pub lp_mint: Box<InterfaceAccount<'info, MintInterface>>,
 
   #[account(
         init_if_needed,
@@ -88,7 +88,7 @@ pub struct Deposit<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program_lp,
     )]
-  pub user_lp_token: InterfaceAccount<'info, TokenAccount>,
+  pub user_lp_token: Box<InterfaceAccount<'info, TokenAccount>>,
 
   pub token_program_x: Interface<'info, TokenInterface>,
   pub token_program_y: Interface<'info, TokenInterface>,
@@ -101,6 +101,9 @@ pub fn handler(ctx: Context<Deposit>, amount_x: u64, amount_y: u64, min_lp_out: 
   let pool_state = &mut ctx.accounts.pool_state;
   let config = &ctx.accounts.config;
 
+  // Input validation
+  require!(amount_x > 0 && amount_y > 0, AMMError::InvalidAmount);
+
   // Check whitelist if enabled
   if let Some(whitelist) = &config.white_list_lp {
     let user_key = ctx.accounts.user.key();
@@ -109,29 +112,37 @@ pub fn handler(ctx: Context<Deposit>, amount_x: u64, amount_y: u64, min_lp_out: 
 
   let lp_tokens_to_mint = if pool_state.lp_supply == 0 {
     // Initial deposit - use geometric mean
+    require!(amount_x > 0 && amount_y > 0, AMMError::InvalidAmount);
     let initial_lp = (amount_x as u128)
       .checked_mul(amount_y as u128)
-      .unwrap()
+      .ok_or(AMMError::InvalidAmount)?
       .integer_sqrt() as u64;
 
     require!(initial_lp >= min_lp_out, AMMError::SlippageExceeded);
+    require!(initial_lp > 0, AMMError::InvalidAmount);
     initial_lp
   } else {
     // Proportional deposit
+    require!(
+      pool_state.reserve_x > 0 && pool_state.reserve_y > 0,
+      AMMError::InsufficientLiquidity
+    );
+
     let lp_from_x = (amount_x as u128)
       .checked_mul(pool_state.lp_supply as u128)
-      .unwrap()
+      .ok_or(AMMError::InvalidAmount)?
       .checked_div(pool_state.reserve_x as u128)
-      .unwrap() as u64;
+      .ok_or(AMMError::InvalidAmount)? as u64;
 
     let lp_from_y = (amount_y as u128)
       .checked_mul(pool_state.lp_supply as u128)
-      .unwrap()
+      .ok_or(AMMError::InvalidAmount)?
       .checked_div(pool_state.reserve_y as u128)
-      .unwrap() as u64;
+      .ok_or(AMMError::InvalidAmount)? as u64;
 
     let lp_tokens = lp_from_x.min(lp_from_y);
     require!(lp_tokens >= min_lp_out, AMMError::SlippageExceeded);
+    require!(lp_tokens > 0, AMMError::InvalidAmount);
     lp_tokens
   };
 
@@ -175,9 +186,18 @@ pub fn handler(ctx: Context<Deposit>, amount_x: u64, amount_y: u64, min_lp_out: 
   mint_to(mint_ctx, lp_tokens_to_mint)?;
 
   // Update pool state
-  pool_state.reserve_x = pool_state.reserve_x.checked_add(amount_x).unwrap();
-  pool_state.reserve_y = pool_state.reserve_y.checked_add(amount_y).unwrap();
-  pool_state.lp_supply = pool_state.lp_supply.checked_add(lp_tokens_to_mint).unwrap();
+  pool_state.reserve_x = pool_state
+    .reserve_x
+    .checked_add(amount_x)
+    .ok_or(AMMError::InvalidAmount)?;
+  pool_state.reserve_y = pool_state
+    .reserve_y
+    .checked_add(amount_y)
+    .ok_or(AMMError::InvalidAmount)?;
+  pool_state.lp_supply = pool_state
+    .lp_supply
+    .checked_add(lp_tokens_to_mint)
+    .ok_or(AMMError::InvalidAmount)?;
 
   msg!(
     "Deposited {} token X, {} token Y, minted {} LP tokens",

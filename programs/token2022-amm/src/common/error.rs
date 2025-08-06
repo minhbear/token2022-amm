@@ -30,4 +30,7 @@ pub enum AMMError {
 
   #[msg("Insufficient output amount")]
   InsufficientOutputAmount,
+
+  #[msg("Division by zero")]
+  DivisionByZero,
 }

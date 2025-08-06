@@ -7,7 +7,7 @@ mod utils;
 
 use instructions::*;
 
-declare_id!("J4a3aueEwbNTW84q6DnEvVZG2EC182fvnXYSnoE6zDkF");
+declare_id!("G9aUkzXu93HWBYZfwNEiSbB53SDH4VJwbs9YNTMzmmhm");
 
 #[program]
 pub mod token2022_amm {
@@ -17,7 +17,7 @@ pub mod token2022_amm {
     ctx: Context<InitializePool>,
     seed: u64,
     fee: u16,
-    white_list_lp: Option<[Pubkey; 50]>,
+    white_list_lp: Option<[Pubkey; 10]>,
   ) -> Result<()> {
     init_pool::handler(ctx, seed, fee, white_list_lp)
   }

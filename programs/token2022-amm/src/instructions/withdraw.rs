@@ -23,14 +23,14 @@ pub struct Withdraw<'info> {
         bump = config.config_bump,
         constraint = !config.locked @ AMMError::PoolLocked
     )]
-  pub config: Account<'info, Config>,
+  pub config: Box<Account<'info, Config>>,
 
   #[account(
         mut,
         seeds = [b"pool", config.key().as_ref()],
         bump
     )]
-  pub pool_state: Account<'info, PoolState>,
+  pub pool_state: Box<Account<'info, PoolState>>,
 
   /// CHECK: PDA authority for the pool
   #[account(
@@ -39,8 +39,8 @@ pub struct Withdraw<'info> {
     )]
   pub pool_authority: UncheckedAccount<'info>,
 
-  pub mint_x: InterfaceAccount<'info, MintInterface>,
-  pub mint_y: InterfaceAccount<'info, MintInterface>,
+  pub mint_x: Box<InterfaceAccount<'info, MintInterface>>,
+  pub mint_y: Box<InterfaceAccount<'info, MintInterface>>,
 
   #[account(
         mut,
@@ -48,7 +48,7 @@ pub struct Withdraw<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program_x,
     )]
-  pub vault_x: InterfaceAccount<'info, TokenAccount>,
+  pub vault_x: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
         mut,
@@ -56,7 +56,7 @@ pub struct Withdraw<'info> {
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program_y,
     )]
-  pub vault_y: InterfaceAccount<'info, TokenAccount>,
+  pub vault_y: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
         mut,
@@ -64,7 +64,7 @@ pub struct Withdraw<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program_x,
     )]
-  pub user_token_x: InterfaceAccount<'info, TokenAccount>,
+  pub user_token_x: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
         mut,
@@ -72,14 +72,14 @@ pub struct Withdraw<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program_y,
     )]
-  pub user_token_y: InterfaceAccount<'info, TokenAccount>,
+  pub user_token_y: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
         mut,
         seeds = [b"lp_mint", config.key().as_ref()],
         bump = config.lp_bump
     )]
-  pub lp_mint: InterfaceAccount<'info, MintInterface>,
+  pub lp_mint: Box<InterfaceAccount<'info, MintInterface>>,
 
   #[account(
         mut,
@@ -87,7 +87,7 @@ pub struct Withdraw<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program_lp,
     )]
-  pub user_lp_token: InterfaceAccount<'info, TokenAccount>,
+  pub user_lp_token: Box<InterfaceAccount<'info, TokenAccount>>,
 
   pub token_program_x: Interface<'info, TokenInterface>,
   pub token_program_y: Interface<'info, TokenInterface>,
@@ -111,15 +111,15 @@ pub fn handler(
   // Calculate proportional withdrawal amounts
   let amount_x = (lp_amount as u128)
     .checked_mul(pool_state.reserve_x as u128)
-    .unwrap()
+    .ok_or(AMMError::InvalidAmount)?
     .checked_div(pool_state.lp_supply as u128)
-    .unwrap() as u64;
+    .ok_or(AMMError::InvalidAmount)? as u64;
 
   let amount_y = (lp_amount as u128)
     .checked_mul(pool_state.reserve_y as u128)
-    .unwrap()
+    .ok_or(AMMError::InvalidAmount)?
     .checked_div(pool_state.lp_supply as u128)
-    .unwrap() as u64;
+    .ok_or(AMMError::InvalidAmount)? as u64;
 
   // Check slippage
   require!(amount_x >= min_amount_x, AMMError::SlippageExceeded);
@@ -166,9 +166,18 @@ pub fn handler(
   transfer_checked(transfer_y_ctx, amount_y, ctx.accounts.mint_y.decimals)?;
 
   // Update pool state
-  pool_state.reserve_x = pool_state.reserve_x.checked_sub(amount_x).unwrap();
-  pool_state.reserve_y = pool_state.reserve_y.checked_sub(amount_y).unwrap();
-  pool_state.lp_supply = pool_state.lp_supply.checked_sub(lp_amount).unwrap();
+  pool_state.reserve_x = pool_state
+    .reserve_x
+    .checked_sub(amount_x)
+    .ok_or(AMMError::InvalidAmount)?;
+  pool_state.reserve_y = pool_state
+    .reserve_y
+    .checked_sub(amount_y)
+    .ok_or(AMMError::InvalidAmount)?;
+  pool_state.lp_supply = pool_state
+    .lp_supply
+    .checked_sub(lp_amount)
+    .ok_or(AMMError::InvalidAmount)?;
 
   msg!(
     "Withdrew {} token X, {} token Y, burned {} LP tokens",

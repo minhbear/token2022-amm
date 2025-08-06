@@ -22,14 +22,14 @@ pub struct Swap<'info> {
         bump = config.config_bump,
         constraint = !config.locked @ AMMError::PoolLocked
     )]
-  pub config: Account<'info, Config>,
+  pub config: Box<Account<'info, Config>>,
 
   #[account(
         mut,
         seeds = [b"pool", config.key().as_ref()],
         bump
     )]
-  pub pool_state: Account<'info, PoolState>,
+  pub pool_state: Box<Account<'info, PoolState>>,
 
   /// CHECK: PDA authority for the pool
   #[account(
@@ -38,24 +38,39 @@ pub struct Swap<'info> {
     )]
   pub pool_authority: UncheckedAccount<'info>,
 
-  pub mint_in: InterfaceAccount<'info, MintInterface>,
-  pub mint_out: InterfaceAccount<'info, MintInterface>,
+  pub mint_in: Box<InterfaceAccount<'info, MintInterface>>,
+  pub mint_out: Box<InterfaceAccount<'info, MintInterface>>,
 
-  /// CHECK: This will be validated as either vault_x or vault_y
-  #[account(mut)]
-  pub vault_in: InterfaceAccount<'info, TokenAccount>,
+  #[account(
+        mut,
+        constraint = vault_in.key() == pool_state.vault_x || vault_in.key() == pool_state.vault_y,
+        constraint = vault_in.mint == mint_in.key(),
+        constraint = vault_in.owner == pool_authority.key(),
+    )]
+  pub vault_in: Box<InterfaceAccount<'info, TokenAccount>>,
 
-  /// CHECK: This will be validated as either vault_x or vault_y  
-  #[account(mut)]
-  pub vault_out: InterfaceAccount<'info, TokenAccount>,
+  #[account(
+        mut,
+        constraint = vault_out.key() == pool_state.vault_x || vault_out.key() == pool_state.vault_y,
+        constraint = vault_out.mint == mint_out.key(),
+        constraint = vault_out.owner == pool_authority.key(),
+        constraint = vault_in.key() != vault_out.key(),
+    )]
+  pub vault_out: Box<InterfaceAccount<'info, TokenAccount>>,
 
-  /// CHECK: This will be validated as user's token account for mint_in
-  #[account(mut)]
-  pub user_token_in: InterfaceAccount<'info, TokenAccount>,
+  #[account(
+        mut,
+        constraint = user_token_in.mint == mint_in.key(),
+        constraint = user_token_in.owner == user.key(),
+    )]
+  pub user_token_in: Box<InterfaceAccount<'info, TokenAccount>>,
 
-  /// CHECK: This will be validated as user's token account for mint_out
-  #[account(mut)]
-  pub user_token_out: InterfaceAccount<'info, TokenAccount>,
+  #[account(
+        mut,
+        constraint = user_token_out.mint == mint_out.key(),
+        constraint = user_token_out.owner == user.key(),
+    )]
+  pub user_token_out: Box<InterfaceAccount<'info, TokenAccount>>,
 
   pub token_program_x: Interface<'info, TokenInterface>,
   pub token_program_y: Interface<'info, TokenInterface>,
@@ -68,6 +83,20 @@ pub fn handler(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Resul
   let config = &ctx.accounts.config;
 
   require!(amount_in > 0, AMMError::InvalidAmount);
+
+  // Verify mint constraints
+  require!(
+    ctx.accounts.mint_in.key() == config.mint_x || ctx.accounts.mint_in.key() == config.mint_y,
+    AMMError::InvalidMint
+  );
+  require!(
+    ctx.accounts.mint_out.key() == config.mint_x || ctx.accounts.mint_out.key() == config.mint_y,
+    AMMError::InvalidMint
+  );
+  require!(
+    ctx.accounts.mint_in.key() != ctx.accounts.mint_out.key(),
+    AMMError::InvalidMint
+  );
 
   // Determine which direction we're swapping
   let (reserve_in, reserve_out, is_x_to_y) = if ctx.accounts.mint_in.key() == config.mint_x {
@@ -91,26 +120,44 @@ pub fn handler(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Resul
     AMMError::InsufficientLiquidity
   );
 
+  // Verify vault balances match reserves (safety check)
+  require!(
+    ctx.accounts.vault_in.amount >= reserve_in,
+    AMMError::InsufficientLiquidity
+  );
+  require!(
+    ctx.accounts.vault_out.amount >= reserve_out,
+    AMMError::InsufficientLiquidity
+  );
+
   // Calculate output amount using constant product formula with fee
   // amount_out = (amount_in * (10000 - fee) * reserve_out) / ((reserve_in * 10000) + (amount_in * (10000 - fee)))
   let fee_adjusted_amount_in = (amount_in as u128)
-    .checked_mul((10000u128).checked_sub(config.fee as u128).unwrap())
-    .unwrap();
+    .checked_mul(
+      (10000u128)
+        .checked_sub(config.fee as u128)
+        .ok_or(AMMError::InvalidAmount)?,
+    )
+    .ok_or(AMMError::InvalidAmount)?;
 
   let numerator = fee_adjusted_amount_in
     .checked_mul(reserve_out as u128)
-    .unwrap();
+    .ok_or(AMMError::InvalidAmount)?;
 
   let denominator = (reserve_in as u128)
     .checked_mul(10000u128)
-    .unwrap()
+    .ok_or(AMMError::InvalidAmount)?
     .checked_add(fee_adjusted_amount_in)
-    .unwrap();
+    .ok_or(AMMError::InvalidAmount)?;
 
-  let amount_out = numerator.checked_div(denominator).unwrap() as u64;
+  require!(denominator > 0, AMMError::InvalidAmount);
+  let amount_out = numerator
+    .checked_div(denominator)
+    .ok_or(AMMError::InvalidAmount)? as u64;
 
   require!(amount_out >= min_amount_out, AMMError::SlippageExceeded);
   require!(amount_out > 0, AMMError::InsufficientOutputAmount);
+  require!(amount_out <= reserve_out, AMMError::InsufficientLiquidity);
 
   // Determine which token programs to use based on swap direction
   let (token_program_in, token_program_out) = if is_x_to_y {
@@ -150,11 +197,23 @@ pub fn handler(ctx: Context<Swap>, amount_in: u64, min_amount_out: u64) -> Resul
 
   // Update pool reserves
   if is_x_to_y {
-    pool_state.reserve_x = pool_state.reserve_x.checked_add(amount_in).unwrap();
-    pool_state.reserve_y = pool_state.reserve_y.checked_sub(amount_out).unwrap();
+    pool_state.reserve_x = pool_state
+      .reserve_x
+      .checked_add(amount_in)
+      .ok_or(AMMError::InvalidAmount)?;
+    pool_state.reserve_y = pool_state
+      .reserve_y
+      .checked_sub(amount_out)
+      .ok_or(AMMError::InvalidAmount)?;
   } else {
-    pool_state.reserve_y = pool_state.reserve_y.checked_add(amount_in).unwrap();
-    pool_state.reserve_x = pool_state.reserve_x.checked_sub(amount_out).unwrap();
+    pool_state.reserve_y = pool_state
+      .reserve_y
+      .checked_add(amount_in)
+      .ok_or(AMMError::InvalidAmount)?;
+    pool_state.reserve_x = pool_state
+      .reserve_x
+      .checked_sub(amount_out)
+      .ok_or(AMMError::InvalidAmount)?;
   }
 
   msg!(
