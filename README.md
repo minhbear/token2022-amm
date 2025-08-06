@@ -1,13 +1,16 @@
 # Token2022 AMM Template
 
-An AMM template for Solana supporting both SPL tokens and Token2022 extensions with proper transfer fee handling.
+A complete AMM (Automated Market Maker) template for Solana with liquidity pools, token swapping, and full Token2022 compatibility.
 
 ## Features
 
-- SPL Token + Token2022 support
-- Transfer fee calculations
-- Constant product (x*y=k) formula
-- Slippage protection
+- **Liquidity Pools**: Create and manage token pair pools
+- **Token Swapping**: Efficient x*y=k constant product swaps
+- **Liquidity Mining**: Add/remove liquidity with LP tokens
+- **Universal Token Support**: SPL Token + Token2022 compatibility
+- **Fee System**: Configurable trading fees with collection
+- **Slippage Protection**: Minimum output guarantees
+- **Transfer Fee Handling**: Automatic Token2022 fee calculations
 
 ## Quick Start
 
