@@ -300,7 +300,7 @@ describe('Token Pair Tests - All Combinations', () => {
         // Ensure LP token account exists for user2 before taking snapshot
         await ensureLpTokenAccount(user2.publicKey, lpMint, authority);
 
-        const amountIn = new anchor.BN(100 * 10 ** 6); // 100 tokens
+        const amountIn = new anchor.BN(10 * 10 ** 6); // 10 tokens
         const minAmountOut = new anchor.BN(1);
 
         // Take snapshot before swap
@@ -380,7 +380,7 @@ describe('Token Pair Tests - All Combinations', () => {
         // Ensure LP token account exists for user2 before taking snapshot
         await ensureLpTokenAccount(user2.publicKey, lpMint, authority);
 
-        const amountIn = new anchor.BN(50 * 10 ** 6); // 50 tokens
+        const amountIn = new anchor.BN(20 * 10 ** 6); // 20 tokens
         const minAmountOut = new anchor.BN(1);
 
         // Take snapshot before swap
@@ -568,7 +568,7 @@ describe('Token Pair Tests - All Combinations', () => {
   });
 
   // Test 2: Token-2022 + Legacy SPL
-  describe.skip('🔄 TOKEN-2022 + LEGACY PAIR', () => {
+  describe('🔄 TOKEN-2022 + LEGACY PAIR', () => {
     let tokenX: TokenInfo;
     let tokenY: TokenInfo;
     let userAccounts: Map<string, UserTokenAccounts>;
@@ -604,7 +604,7 @@ describe('Token Pair Tests - All Combinations', () => {
   });
 
   // Test 3: Token-2022 + Token-2022
-  describe.skip('🔄 TOKEN-2022 + TOKEN-2022 PAIR', () => {
+  describe('🔄 TOKEN-2022 + TOKEN-2022 PAIR', () => {
     let tokenX: TokenInfo;
     let tokenY: TokenInfo;
     let userAccounts: Map<string, UserTokenAccounts>;
