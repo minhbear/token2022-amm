@@ -3,10 +3,14 @@
   "scripts": {
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
+    "test": "anchor test tests/token-pair-tests.ts",
+    "test:all": "anchor test tests/**/*.ts",
     "prepare": "husky install"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
+    "@solana/spl-token": "^0.4.8",
+    "@solana/web3.js": "^1.95.4",
     "husky": "^9.1.7"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 use {
-  crate::common::error::AMMError,
+  crate::common::{constant::NOT_ALLOW_TOKEN_EXTS, error::AMMError},
   anchor_lang::prelude::*,
   anchor_spl::{
     token::Token,
@@ -41,9 +41,15 @@ pub fn verify_supported_token_mint(token_mint: &InterfaceAccount<'_, Mint>) -> R
 
   let tlv_data = token_mint_unpacked.get_tlv_data();
   let extensions = get_token_extension_types(tlv_data)?;
+
+  // Check if any extension is in the NOT_ALLOW_TOKEN_EXTS list
   for extension in extensions {
+    if NOT_ALLOW_TOKEN_EXTS.contains(&extension) {
+      return Err(AMMError::NotAllowedTokenExtension.into());
+    }
+
     match extension {
-      // supported
+      // supported extensions
       ExtensionType::TransferFeeConfig => {}
       ExtensionType::InterestBearingConfig => {}
       ExtensionType::TokenMetadata => {}
@@ -51,38 +57,20 @@ pub fn verify_supported_token_mint(token_mint: &InterfaceAccount<'_, Mint>) -> R
       // partially supported
       ExtensionType::ConfidentialTransferMint => {
         // Supported, but non-confidential transfer only
-        //
-        // WhirlpoolProgram invokes TransferChecked instruction and it supports non-confidential transfer only.
-        //
-        // Because the vault accounts are not configured to support confidential transfer,
-        // it is impossible to send tokens directly to the vault accounts confidentially.
-        // Note: Only the owner (Whirlpool account) can call ConfidentialTransferInstruction::ConfigureAccount.
       }
       ExtensionType::ConfidentialTransferFeeConfig => {
         // Supported, but non-confidential transfer only
-        // When both TransferFeeConfig and ConfidentialTransferMint are initialized,
-        // ConfidentialTransferFeeConfig is also initialized to store encrypted transfer fee amount.
       }
-      // supported if token badge is initialized
-      ExtensionType::PermanentDelegate => {
-        return Ok(false);
+      // explicitly not allowed (handled above by NOT_ALLOW_TOKEN_EXTS check)
+      ExtensionType::PermanentDelegate
+      | ExtensionType::TransferHook
+      | ExtensionType::NonTransferable => {
+        // This should not be reached due to the check above, but kept for safety
+        return Err(AMMError::NotAllowedTokenExtension.into());
       }
-      ExtensionType::TransferHook => {
-        return Ok(false);
-      }
-      ExtensionType::MintCloseAuthority => {
-        return Ok(false);
-      }
-      ExtensionType::DefaultAccountState => {
-        return Ok(false);
-      }
-      // No possibility to support the following extensions
-      ExtensionType::NonTransferable => {
-        return Ok(false);
-      }
-      // mint has unknown or unsupported extensions
-      _ => {
-        return Ok(false);
+      // other unsupported extensions
+      ExtensionType::MintCloseAuthority | ExtensionType::DefaultAccountState | _ => {
+        return Err(AMMError::NotAllowedTokenExtension.into());
       }
     }
   }

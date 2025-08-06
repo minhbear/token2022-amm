@@ -1,0 +1,121 @@
+use {
+  crate::{
+    state::{Config, PoolState},
+    utils::token::verify_supported_token_mint,
+  },
+  anchor_lang::prelude::*,
+  anchor_spl::{
+    associated_token::AssociatedToken,
+    token_interface::{Mint as MintInterface, TokenAccount, TokenInterface},
+  },
+};
+
+#[derive(Accounts)]
+#[instruction(seed: u64)]
+pub struct InitializePool<'info> {
+  #[account(mut)]
+  pub authority: Signer<'info>,
+
+  #[account(
+        init,
+        payer = authority,
+        space = Config::LEN,
+        seeds = [b"config", seed.to_le_bytes().as_ref()],
+        bump
+    )]
+  pub config: Account<'info, Config>,
+
+  #[account(
+        init,
+        payer = authority,
+        space = PoolState::LEN,
+        seeds = [b"pool", config.key().as_ref()],
+        bump
+    )]
+  pub pool_state: Account<'info, PoolState>,
+
+  pub mint_x: InterfaceAccount<'info, MintInterface>,
+  pub mint_y: InterfaceAccount<'info, MintInterface>,
+
+  #[account(
+        init,
+        payer = authority,
+        mint::decimals = 6,
+        mint::authority = pool_authority,
+        mint::token_program = token_program_lp,
+        seeds = [b"lp_mint", config.key().as_ref()],
+        bump
+    )]
+  pub lp_mint: InterfaceAccount<'info, MintInterface>,
+
+  /// CHECK: PDA authority for the pool
+  #[account(
+        seeds = [b"auth", config.key().as_ref()],
+        bump
+    )]
+  pub pool_authority: UncheckedAccount<'info>,
+
+  #[account(
+        init,
+        payer = authority,
+        associated_token::mint = mint_x,
+        associated_token::authority = pool_authority,
+        associated_token::token_program = token_program_x,
+    )]
+  pub vault_x: InterfaceAccount<'info, TokenAccount>,
+
+  #[account(
+        init,
+        payer = authority,
+        associated_token::mint = mint_y,
+        associated_token::authority = pool_authority,
+        associated_token::token_program = token_program_y,
+    )]
+  pub vault_y: InterfaceAccount<'info, TokenAccount>,
+
+  pub token_program_x: Interface<'info, TokenInterface>,
+  pub token_program_y: Interface<'info, TokenInterface>,
+  pub token_program_lp: Interface<'info, TokenInterface>,
+  pub associated_token_program: Program<'info, AssociatedToken>,
+  pub system_program: Program<'info, System>,
+}
+
+pub fn handler(
+  ctx: Context<InitializePool>,
+  seed: u64,
+  fee: u16,
+  white_list_lp: Option<[Pubkey; 50]>,
+) -> Result<()> {
+  let config = &mut ctx.accounts.config;
+  let pool_state = &mut ctx.accounts.pool_state;
+
+  // Verify both tokens are supported (legacy SPL or Token-2022 with allowed extensions)
+  verify_supported_token_mint(&ctx.accounts.mint_x)?;
+  verify_supported_token_mint(&ctx.accounts.mint_y)?;
+
+  // Initialize config
+  config.seed = seed;
+  config.authority = ctx.accounts.authority.key();
+  config.mint_x = ctx.accounts.mint_x.key();
+  config.mint_y = ctx.accounts.mint_y.key();
+  config.fee = fee;
+  config.locked = false;
+  config.white_list_lp = white_list_lp;
+  config.auth_bump = ctx.bumps.pool_authority;
+  config.config_bump = ctx.bumps.config;
+  config.lp_bump = ctx.bumps.lp_mint;
+
+  // Initialize pool state
+  pool_state.config = config.key();
+  pool_state.vault_x = ctx.accounts.vault_x.key();
+  pool_state.vault_y = ctx.accounts.vault_y.key();
+  pool_state.lp_mint = ctx.accounts.lp_mint.key();
+  pool_state.reserve_x = 0;
+  pool_state.reserve_y = 0;
+  pool_state.lp_supply = 0;
+
+  msg!("Pool initialized with seed: {}, fee: {}", seed, fee);
+  msg!("Mint X: {}, Mint Y: {}", config.mint_x, config.mint_y);
+
+  Ok(())
+}
