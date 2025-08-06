@@ -1,13 +1,13 @@
 [toolchain]
-package_manager = "yarn"
 anchor_version = "0.31.1"
+package_manager = "yarn"
 
 [features]
 resolution = true
 skip-lint = false
 
 [programs.localnet]
-token2022_amm = "G9aUkzXu93HWBYZfwNEiSbB53SDH4VJwbs9YNTMzmmhm"
+token2022_amm = "2AXqNb7CQRbS9z7U2NXZXVmzrJ3FxD2ztxiVASfgxUL2"
 
 [registry]
 url = "https://api.apr.dev"

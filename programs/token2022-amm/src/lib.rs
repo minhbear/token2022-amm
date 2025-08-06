@@ -7,7 +7,7 @@ mod utils;
 
 use instructions::*;
 
-declare_id!("G9aUkzXu93HWBYZfwNEiSbB53SDH4VJwbs9YNTMzmmhm");
+declare_id!("2AXqNb7CQRbS9z7U2NXZXVmzrJ3FxD2ztxiVASfgxUL2");
 
 #[program]
 pub mod token2022_amm {
