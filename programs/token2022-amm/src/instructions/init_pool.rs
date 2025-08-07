@@ -1,7 +1,10 @@
 use {
   crate::{
-    common::error::AMMError,
-    state::{Config, PoolState},
+    common::{
+      constant::{seed_prefix, DISCRIMINATOR},
+      error::AMMError,
+    },
+    state::{Config, InitConfigParams, InitPoolStateParams, PoolState, MAX_WHITE_LIST_LP},
     utils::token::verify_supported_token_mint,
   },
   anchor_lang::prelude::*,
@@ -18,60 +21,60 @@ pub struct InitializePool<'info> {
   pub authority: Signer<'info>,
 
   #[account(
-        init,
-        payer = authority,
-        space = Config::LEN,
-        seeds = [b"config", seed.to_le_bytes().as_ref()],
-        bump
-    )]
+    init,
+    payer = authority,
+    space = DISCRIMINATOR + Config::INIT_SPACE,
+    seeds = [seed_prefix::CONFIG, seed.to_le_bytes().as_ref()],
+    bump
+  )]
   pub config: Box<Account<'info, Config>>,
 
   #[account(
-        init,
-        payer = authority,
-        space = PoolState::LEN,
-        seeds = [b"pool", config.key().as_ref()],
-        bump
-    )]
+    init,
+    payer = authority,
+    space = DISCRIMINATOR + PoolState::INIT_SPACE,
+    seeds = [seed_prefix::POOL, config.key().as_ref()],
+    bump
+  )]
   pub pool_state: Box<Account<'info, PoolState>>,
 
   pub mint_x: Box<InterfaceAccount<'info, MintInterface>>,
   pub mint_y: Box<InterfaceAccount<'info, MintInterface>>,
 
   #[account(
-        init,
-        payer = authority,
-        mint::decimals = 6,
-        mint::authority = pool_authority,
-        mint::token_program = token_program_lp,
-        seeds = [b"lp_mint", config.key().as_ref()],
-        bump
-    )]
+    init,
+    payer = authority,
+    mint::decimals = 6,
+    mint::authority = pool_authority,
+    mint::token_program = token_program_lp,
+    seeds = [seed_prefix::LP_MINT, config.key().as_ref()],
+    bump
+  )]
   pub lp_mint: Box<InterfaceAccount<'info, MintInterface>>,
 
   /// CHECK: PDA authority for the pool
   #[account(
-        seeds = [b"auth", config.key().as_ref()],
-        bump
-    )]
+    seeds = [seed_prefix::AUTH, config.key().as_ref()],
+    bump
+  )]
   pub pool_authority: UncheckedAccount<'info>,
 
   #[account(
-        init,
-        payer = authority,
-        associated_token::mint = mint_x,
-        associated_token::authority = pool_authority,
-        associated_token::token_program = token_program_x,
-    )]
+    init,
+    payer = authority,
+    associated_token::mint = mint_x,
+    associated_token::authority = pool_authority,
+    associated_token::token_program = token_program_x,
+  )]
   pub vault_x: Box<InterfaceAccount<'info, TokenAccount>>,
 
   #[account(
-        init,
-        payer = authority,
-        associated_token::mint = mint_y,
-        associated_token::authority = pool_authority,
-        associated_token::token_program = token_program_y,
-    )]
+    init,
+    payer = authority,
+    associated_token::mint = mint_y,
+    associated_token::authority = pool_authority,
+    associated_token::token_program = token_program_y,
+  )]
   pub vault_y: Box<InterfaceAccount<'info, TokenAccount>>,
 
   pub token_program_x: Interface<'info, TokenInterface>,
@@ -85,7 +88,7 @@ pub fn handler(
   ctx: Context<InitializePool>,
   seed: u64,
   fee: u16,
-  white_list_lp: Option<[Pubkey; 10]>,
+  white_list_lp: Option<[Pubkey; MAX_WHITE_LIST_LP]>,
 ) -> Result<()> {
   let config = &mut ctx.accounts.config;
   let pool_state = &mut ctx.accounts.pool_state;
@@ -137,29 +140,26 @@ pub fn handler(
     );
   }
 
-  // Initialize config
-  config.seed = seed;
-  config.authority = ctx.accounts.authority.key();
-  config.mint_x = ctx.accounts.mint_x.key();
-  config.mint_y = ctx.accounts.mint_y.key();
-  config.fee = fee;
-  config.locked = false;
-  config.white_list_lp = white_list_lp;
-  config.auth_bump = ctx.bumps.pool_authority;
-  config.config_bump = ctx.bumps.config;
-  config.lp_bump = ctx.bumps.lp_mint;
+  let params_init_config: InitConfigParams = InitConfigParams {
+    seed,
+    authority: ctx.accounts.authority.key(),
+    mint_x: ctx.accounts.mint_x.key(),
+    mint_y: ctx.accounts.mint_y.key(),
+    fee,
+    white_list_lp,
+    auth_bump: ctx.bumps.pool_authority,
+    config_bump: ctx.bumps.config,
+    lp_bump: ctx.bumps.lp_mint,
+  };
+  config.init(params_init_config);
 
-  // Initialize pool state
-  pool_state.config = config.key();
-  pool_state.vault_x = ctx.accounts.vault_x.key();
-  pool_state.vault_y = ctx.accounts.vault_y.key();
-  pool_state.lp_mint = ctx.accounts.lp_mint.key();
-  pool_state.reserve_x = 0;
-  pool_state.reserve_y = 0;
-  pool_state.lp_supply = 0;
-
-  msg!("Pool initialized with seed: {}, fee: {}", seed, fee);
-  msg!("Mint X: {}, Mint Y: {}", config.mint_x, config.mint_y);
+  let params_init_pool_state = InitPoolStateParams {
+    config: config.key(),
+    lp_mint: ctx.accounts.lp_mint.key(),
+    vault_x: ctx.accounts.vault_x.key(),
+    vault_y: ctx.accounts.vault_y.key(),
+  };
+  pool_state.init(params_init_pool_state);
 
   Ok(())
 }

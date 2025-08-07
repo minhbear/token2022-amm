@@ -1,5 +1,5 @@
 use {
-  crate::common::{constant::NOT_ALLOW_TOKEN_EXTS, error::AMMError},
+  crate::common::error::AMMError,
   anchor_lang::prelude::*,
   anchor_spl::{
     token::Token,
@@ -44,10 +44,6 @@ pub fn verify_supported_token_mint(token_mint: &InterfaceAccount<'_, Mint>) -> R
 
   // Check if any extension is in the NOT_ALLOW_TOKEN_EXTS list
   for extension in extensions {
-    if NOT_ALLOW_TOKEN_EXTS.contains(&extension) {
-      return Err(AMMError::NotAllowedTokenExtension.into());
-    }
-
     match extension {
       // supported extensions
       ExtensionType::TransferFeeConfig => {}
