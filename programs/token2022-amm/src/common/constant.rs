@@ -1,8 +1,8 @@
-use anchor_spl::token_2022::spl_token_2022::extension::ExtensionType;
+pub const DISCRIMINATOR: usize = 8;
 
-// Token extensions that are not allowed in the AMM
-pub const NOT_ALLOW_TOKEN_EXTS: [ExtensionType; 3] = [
-  ExtensionType::NonTransferable,
-  ExtensionType::TransferHook,
-  ExtensionType::PermanentDelegate,
-];
+pub mod seed_prefix {
+  pub const CONFIG: &[u8] = b"config";
+  pub const POOL: &[u8] = b"pool";
+  pub const LP_MINT: &[u8] = b"lp_mint";
+  pub const AUTH: &[u8] = b"auth";
+}
